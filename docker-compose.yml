@@ -1,0 +1,80 @@
+version: '3.7'
+
+x-op-deploy: &deploy
+  replicas: 1
+  restart_policy:
+     condition: on-failure
+  placement:
+     constraints: [node.labels.name==manager]
+
+networks:
+  my_app_net:
+    external: true
+
+configs:
+  caddy_config:
+    file: ./caddy/Caddyfile
+
+services:
+    caddy:
+      image: stefanprodan/caddy
+      ports:
+        - "16688:16688"
+      environment:
+        - ADMIN_USER=${ADMIN_USER:-admin}
+        - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      configs:
+        - source: caddy_config
+          target: /etc/caddy/Caddyfile
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy
+
+    jaeger-collector:
+      image: jaegertracing/jaeger-collector
+      command: ["--cassandra.keyspace=jaeger_v1_dc1", "--cassandra.servers=cassandra", "--collector.zipkin.http-port=9411"]
+      depends_on:
+        - cassandra-schema
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy
+
+    jaeger-query:
+      image: jaegertracing/jaeger-query
+      command: ["--cassandra.keyspace=jaeger_v1_dc1", "--cassandra.servers=cassandra"]
+      depends_on:
+        - cassandra-schema
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy
+
+    jaeger:
+      image: jaegertracing/jaeger-agent
+      command: ["--reporter.grpc.host-port=jaeger-collector:14250"]
+      depends_on:
+        - jaeger-collector
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy
+
+    cassandra:
+      image: cassandra:3.9
+      volumes:
+        - ${GLUSTER_STOR02_PATH}/jaeger/cassandra:/var/lib/cassandra
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy
+
+    cassandra-schema:
+      image: jaegertracing/jaeger-cassandra-schema
+      depends_on:
+        - cassandra
+      networks:
+        - my_app_net
+      deploy:
+          <<: *deploy

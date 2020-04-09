@@ -1,0 +1,9 @@
+:16688 {
+    basicauth / {$ADMIN_USER} {$ADMIN_PASSWORD}
+    proxy / jaeger-query:16686 {
+            transparent
+        }
+
+    errors stderr
+    tls off
+}
